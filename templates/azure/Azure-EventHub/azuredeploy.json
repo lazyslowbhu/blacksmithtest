@@ -1,0 +1,92 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "utcValue": {
+      "type": "string",
+      "metadata": {
+        "description": "Returns the current (UTC) datetime value in the specified format. If no format is provided, the ISO 8601 (yyyyMMddTHHmmssZ) format is used"
+      },
+      "defaultValue": "[utcNow()]"
+    },
+    "projectName": {
+      "type": "string",
+      "metadata": {
+        "description": "Specifies a project name that is used to generate the Event Hub name and the Namespace name."
+      }
+    },
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Specifies the Azure location for all resources."
+      },
+      "defaultValue": "[resourceGroup().location]"
+    },
+    "eventHubSku": {
+      "type": "string",
+      "metadata": {
+        "description": "Specifies the messaging tier for service Bus namespace."
+      },
+      "defaultValue": "Standard",
+      "allowedValues": [
+        "Basic",
+        "Standard"
+      ]
+    }
+  },
+  "functions": [],
+  "variables": {
+    "uniqueNamespace": "[concat(parameters('projectName'), uniqueString(resourceGroup().id, parameters('utcValue')))]",
+    "eventHubName": "[format('evh-{0}', parameters('projectName'))]",
+    "eventHubNamespaceName": "[format('evhns-{0}', variables('uniqueNamespace'))]",
+    "defaultSASKeyName": "RootManageSharedAccessKey",
+    "authRuleResourceId": "[resourceId('Microsoft.EventHub/namespaces/authorizationRules', variables('eventHubNamespaceName'), variables('defaultSASKeyName'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.EventHub/namespaces",
+      "apiVersion": "2017-04-01",
+      "name": "[variables('eventHubNamespaceName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "[parameters('eventHubSku')]",
+        "tier": "[parameters('eventHubSku')]",
+        "capacity": 1
+      },
+      "properties": {
+        "isAutoInflateEnabled": false,
+        "maximumThroughputUnits": 0
+      }
+    },
+    {
+      "type": "Microsoft.EventHub/namespaces/eventhubs",
+      "apiVersion": "2017-04-01",
+      "name": "[format('{0}/{1}', variables('eventHubNamespaceName'), variables('eventHubName'))]",
+      "properties": {
+        "messageRetentionInDays": 7,
+        "partitionCount": 1
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "EventHubName": {
+      "type": "string",
+      "value": "[variables('eventHubName')]"
+    },
+    "EventHubNamespace": {
+      "type": "string",
+      "value": "[variables('eventHubNamespaceName')]"
+    },
+    "NamespaceConnectionString": {
+      "type": "string",
+      "value": "[listkeys(variables('authRuleResourceId'), '2017-04-01').primaryConnectionString]"
+    },
+    "SharedAccessPolicyPrimaryKey": {
+      "type": "string",
+      "value": "[listkeys(variables('authRuleResourceId'), '2017-04-01').primaryKey]"
+    }
+  }
+}

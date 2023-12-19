@@ -1,0 +1,223 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "utcValue": {
+            "type": "string",
+            "defaultValue": "[utcNow()]",
+            "metadata": {
+                "description": "Returns the current (UTC) datetime value in the specified format. If no format is provided, the ISO 8601 (yyyyMMddTHHmmssZ) format is used"
+            }
+        },
+        "storageNamePrefix": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 7,
+            "metadata": {
+            "description": "The prefix of the storage account name must be from 3 to 7 characters in length. The complete Storage account name must be between 3 and 24 characters in length and use numbers and lower-case letters only. This input is used with a unique string of 13 characters generated automatically to create a unique Storage Account Name across Azure."
+            }
+        },
+        "storageSKUName": {
+            "type": "string",
+            "defaultValue": "Standard_LRS",
+            "allowedValues": [
+                "Standard_LRS",
+                "Standard_GRS",
+                "Standard_ZRS",
+                "Premium_LRS"
+            ],
+            "metadata": {
+                "description": "Storage SKU type"
+            }
+        },
+        "storageSKUTier": {
+            "type": "string",
+            "defaultValue": "Standard",
+            "allowedValues": [
+                "Standard",
+                "Premium"
+            ],
+            "metadata": {
+                "description": "Storage SKU tier"
+            }
+        },
+        "containerName": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 63,
+            "metadata": {
+                "description": "The name of the blob container within the specified storage account. he complete Storage account name must be between 3 and 63 characters in length and use lowercase letters, numbers, and hyphens. Start with lowercase letter or number. Can't use consecutive hyphens."
+            }
+        },
+        "enableAzureDefender": {
+            "type": "bool",
+            "metadata": {
+                "description": "Do you want to enable the Azure Defender for Storage (advancedThreatProtectionSettings)? "
+            },
+            "defaultValue": false
+        },
+        "enableDiagnosticLogging": {
+            "type": "bool",
+            "metadata": {
+                "description": "Do you want to enable StorageRead,StorageWrite and StorageDelete onb Blog and File Diagnostic Logging?"
+            },
+            "defaultValue": false
+        },
+        "diagnosticSettingName": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the diagnostic setting"
+            },
+            "defaultValue": "blacksmith"
+        },
+        "workspaceName": {
+            "type": "string",
+            "metadata": {
+                "description": "Specifies the globally unique name of the Log Analytics workspace."
+            },
+            "defaultValue": ""
+        },
+        "signedExpiry": {
+            "type": "string",
+            "defaultValue": "2023-12-25T00:00:00Z"
+        },
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+            "description": "Specifies the Azure location for all resources."
+            }
+      }
+    },
+    "variables": {
+      "uniqueStorageAccountName": "[concat(parameters('storageNamePrefix'), uniquestring(subscription().subscriptionId, resourceGroup().id, deployment().name, parameters('utcValue')))]",
+      "storageAccountNameTidy": "[toLower(trim(variables('uniqueStorageAccountName')))]",
+      "containerNameTidy": "[toLower(trim(parameters('containerName')))]",
+      "listAccountSasRequestContent": {
+            "signedServices": "bf",
+            "signedPermission": "r",
+            "keyToSign": "key2",
+            "signedExpiry": "[parameters('signedExpiry')]",
+            "signedResourceTypes": "sco"
+        },
+        "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
+    },
+    "resources": [
+        {
+            "name": "[variables('storageAccountNameTidy')]",
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2019-06-01",
+            "location": "[parameters('location')]",
+            "sku": {
+                "name": "[parameters('storageSKUName')]",
+                "tier": "[parameters('storageSKUTier')]"
+            },
+            "kind": "StorageV2",
+            "properties": {
+                "allowBlobPublicAccess" : false
+            },
+            "resources": [
+                {
+                    "type": "blobServices/containers",
+                    "apiVersion": "2019-06-01",
+                    "name": "[concat('default/',variables('containerNameTidy'))]",
+                    "dependsOn": [
+                        "[variables('storageAccountNameTidy')]"
+                    ],
+                    "properties": {
+                        "publicAccess": "None"
+                    }
+                }
+            ]
+        },
+        {
+            "condition": "[parameters('enableAzureDefender')]",
+            "name": "[concat(variables('storageAccountNameTidy'), '/Microsoft.Security/current')]",
+            "type": "Microsoft.Storage/storageAccounts/providers/advancedThreatProtectionSettings",
+            "apiVersion": "2019-01-01",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/', variables('storageAccountNameTidy'))]"
+            ],
+            "properties": {
+                "isEnabled": true
+            }
+        },
+        {
+            "condition": "[parameters('enableDiagnosticLogging')]",
+            "name": "[concat(variables('storageAccountNameTidy'),'/default/Microsoft.Insights/', parameters('diagnosticSettingName'))]",
+            "type": "Microsoft.Storage/storageAccounts/fileServices/providers/diagnosticsettings",
+            "apiVersion": "2017-05-01-preview",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/', variables('storageAccountNameTidy'))]"
+            ],
+            "properties": {
+                "logs": [
+                    {
+                        "category": "StorageRead",
+                        "enabled": true
+                    },
+                    {
+                        "category": "StorageWrite",
+                        "enabled": true
+                    },
+                    {
+                        "category": "StorageDelete",
+                        "enabled": true
+                    }
+                ],
+                "metrics": [
+                    {
+                        "enabled": false,
+                        "category": "Transaction"
+                    }
+                ],
+                "workspaceId": "[variables('workspaceId')]"
+            }
+        },
+        {
+            "condition": "[parameters('enableDiagnosticLogging')]",
+            "name": "[concat(variables('storageAccountNameTidy'),'/default/Microsoft.Insights/', parameters('diagnosticSettingName'))]",
+            "type": "Microsoft.Storage/storageAccounts/blobServices/providers/diagnosticsettings",
+            "apiVersion": "2017-05-01-preview",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/', variables('storageAccountNameTidy'))]"
+            ],
+            "properties": {
+                "logs": [
+                    {
+                        "category": "StorageRead",
+                        "enabled": true
+                    },
+                    {
+                        "category": "StorageWrite",
+                        "enabled": true
+                    },
+                    {
+                        "category": "StorageDelete",
+                        "enabled": true
+                    }
+                ],
+                "metrics": [
+                    {
+                        "enabled": false,
+                        "category": "Transaction"
+                    }
+                ],
+                "workspaceId": "[variables('workspaceId')]"
+            }
+        }
+    ],
+    "outputs": {
+        "storageAccountConnectionString": {
+            "type": "string",
+            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('storageAccountNameTidy'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountNameTidy')), '2019-06-01').keys[0].value, ';EndpointSuffix=core.windows.net')]"
+        },
+        "SASToken": {
+            "type": "string",
+            "value": "[listAccountSas(variables('storageAccountNameTidy'), '2019-06-01', variables('listAccountSasRequestContent')).accountSasToken]"
+        }
+    }
+}
