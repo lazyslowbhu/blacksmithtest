@@ -6,6 +6,9 @@ configuration Join-Domain {
         [Parameter(Mandatory)]
         [String]$DomainFQDN,
 
+        [Parameter(Mandatory=$false)]
+        [String]$DomainNetbiosName,
+
         [Parameter(Mandatory)]
         [System.Management.Automation.PSCredential]$AdminCreds,
 
@@ -17,9 +20,12 @@ configuration Join-Domain {
     ) 
     
     Import-DscResource -ModuleName NetworkingDsc, ActiveDirectoryDsc, xPSDesiredStateConfiguration, ComputerManagementDsc
+
+    if (!($DomainNetbiosName)) {
+        [String] $DomainNetbiosName = (Get-NetBIOSName -DomainFQDN $DomainFQDN)
+    }
     
-    [String] $DomainNetbiosName = (Get-NetBIOSName -DomainFQDN $DomainFQDN)
-    [System.Management.Automation.PSCredential]$DomainCreds = New-Object System.Management.Automation.PSCredential ("${DomainNetbiosName}\$($Admincreds.UserName)", $Admincreds.Password)
+    [System.Management.Automation.PSCredential]$DomainAdminCreds = New-Object System.Management.Automation.PSCredential ("$DomainNetbiosName\$($Admincreds.UserName)", $Admincreds.Password)
 
     $Interface = Get-NetAdapter | Where-Object Name -Like "Ethernet*" | Select-Object -First 1
     $InterfaceAlias = $($Interface.Name)
@@ -46,7 +52,7 @@ configuration Join-Domain {
             DomainName              = $DomainFQDN
             WaitTimeout             = 300
             RestartCount            = 3
-            Credential              = $DomainCreds
+            Credential              = $DomainAdminCreds
             DependsOn               = "[DnsServerAddress]SetDNS"
         }
 
@@ -54,7 +60,7 @@ configuration Join-Domain {
         {
             Name          = $ComputerName 
             DomainName    = $DomainFQDN
-            Credential    = $DomainCreds
+            Credential    = $DomainAdminCreds
             JoinOU        = $JoinOU
             DependsOn  = "[WaitForADDomain]WaitForDCReady"
         }
