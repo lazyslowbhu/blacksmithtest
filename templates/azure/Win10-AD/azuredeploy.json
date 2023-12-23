@@ -47,6 +47,13 @@
             },
             "defaultValue": 1
         },
+         "domainNetbiosName": {
+            "type": "string",
+            "metadata": {
+                "description": "NetBIOS name for the new AD domain"
+            },
+            "defaultValue": ""
+        },
         "vmNamePrefix": {
             "type": "string",
             "metadata": {
@@ -741,6 +748,9 @@
                     "domainFQDN": {
                         "value": "[parameters('domainFQDN')]"
                     },
+                      "domainNetbiosName": {
+                        "value": "[parameters('domainNetbiosName')]"
+                    },
                     "adminUsername": {
                         "value": "[parameters('adminUsername')]"
                     },
@@ -839,6 +849,9 @@
                     },
                     "domainFQDN": {
                         "value": "[parameters('domainFQDN')]"
+                    },
+                      "domainNetbiosName": {
+                        "value": "[parameters('domainNetbiosName')]"
                     },
                     "adminUsername": {
                         "value": "[parameters('adminUsername')]"
